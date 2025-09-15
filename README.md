@@ -227,4 +227,4 @@ pm2 logs whatsapp-backend
 
 ### Conexão cai frequentemente
 - Aumente MAX_RECONNECT_ATTEMPTS
-- Verifique a estabilidade da rede
+- Verifique a estabilidade da rede# Railway Deploy
