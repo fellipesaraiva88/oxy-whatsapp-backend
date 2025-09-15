@@ -12,7 +12,7 @@ RUN apk add --no-cache \
     giflib-dev
 
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install && npm cache clean --force
 
 COPY tsconfig.json ./
 COPY src ./src
