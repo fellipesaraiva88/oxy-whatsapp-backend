@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  whatsapp-backend:
+    build: .
+    container_name: oxy-whatsapp-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SESSION_PATH=/app/sessions
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - MAX_RECONNECT_ATTEMPTS=5
+      - RECONNECT_INTERVAL=5000
+    volumes:
+      - ./sessions:/app/sessions
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - whatsapp-network
+
+networks:
+  whatsapp-network:
+    driver: bridge
+
+volumes:
+  sessions:
+  logs:

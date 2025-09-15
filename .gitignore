@@ -1,0 +1,17 @@
+node_modules/
+dist/
+sessions/
+logs/
+.env
+.env.local
+.env.production
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+.vscode/
+.idea/
+*.log
+*.pid
+*.seed
+*.pid.lock
