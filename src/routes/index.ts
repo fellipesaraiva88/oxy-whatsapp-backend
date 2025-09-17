@@ -1,6 +1,5 @@
 import { Express, Request, Response } from 'express';
 import { WhatsAppManager } from '../services/WhatsAppManager';
-import { SupabaseService } from '../services/SupabaseService';
 import { logger } from '../utils/logger';
 
 interface AuthRequest extends Request {
@@ -9,11 +8,10 @@ interface AuthRequest extends Request {
 
 export function setupRoutes(
   app: Express,
-  whatsappManager: WhatsAppManager,
-  supabaseService: SupabaseService
+  whatsappManager: WhatsAppManager
 ): void {
 
-  app.get('/health', (req: Request, res: Response) => {
+  app.get('/health', (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
@@ -21,7 +19,7 @@ export function setupRoutes(
     });
   });
 
-  app.post('/api/connect', async (req: AuthRequest, res: Response) => {
+  app.post('/api/connect', async (req: AuthRequest, res: Response): Promise<Response> => {
     try {
       const { userId } = req.body;
 
@@ -32,14 +30,14 @@ export function setupRoutes(
       logger.info(`Connection request from user ${userId}`);
       const result = await whatsappManager.connectUser(userId);
 
-      res.json(result);
+      return res.json(result);
     } catch (error) {
       logger.error('Connection error:', error);
-      res.status(500).json({ error: 'Failed to connect' });
+      return res.status(500).json({ error: 'Failed to connect' });
     }
   });
 
-  app.post('/api/disconnect', async (req: AuthRequest, res: Response) => {
+  app.post('/api/disconnect', async (req: AuthRequest, res: Response): Promise<Response> => {
     try {
       const { userId } = req.body;
 
@@ -48,14 +46,14 @@ export function setupRoutes(
       }
 
       const result = await whatsappManager.disconnectUser(userId);
-      res.json(result);
+      return res.json(result);
     } catch (error) {
       logger.error('Disconnection error:', error);
-      res.status(500).json({ error: 'Failed to disconnect' });
+      return res.status(500).json({ error: 'Failed to disconnect' });
     }
   });
 
-  app.get('/api/status/:userId', async (req: Request, res: Response) => {
+  app.get('/api/status/:userId', async (req: Request, res: Response): Promise<void> => {
     try {
       const { userId } = req.params;
       const status = whatsappManager.getConnectionStatus(userId);
@@ -67,7 +65,7 @@ export function setupRoutes(
     }
   });
 
-  app.post('/api/send-message', async (req: AuthRequest, res: Response) => {
+  app.post('/api/send-message', async (req: AuthRequest, res: Response): Promise<Response> => {
     try {
       const { userId, to, message, type = 'text' } = req.body;
 
@@ -101,14 +99,14 @@ export function setupRoutes(
       }
 
       const result = await whatsappManager.sendMessage(userId, to, content);
-      res.json(result);
+      return res.json(result);
     } catch (error) {
       logger.error('Send message error:', error);
-      res.status(500).json({ error: 'Failed to send message' });
+      return res.status(500).json({ error: 'Failed to send message' });
     }
   });
 
-  app.post('/api/send-bulk', async (req: AuthRequest, res: Response) => {
+  app.post('/api/send-bulk', async (req: AuthRequest, res: Response): Promise<Response> => {
     try {
       const { userId, recipients, message, delay: delayMs = 1000 } = req.body;
 
@@ -137,7 +135,7 @@ export function setupRoutes(
         }
       }
 
-      res.json({
+      return res.json({
         success: true,
         sent: results.filter(r => r.success).length,
         failed: results.filter(r => !r.success).length,
@@ -145,11 +143,11 @@ export function setupRoutes(
       });
     } catch (error) {
       logger.error('Bulk send error:', error);
-      res.status(500).json({ error: 'Failed to send bulk messages' });
+      return res.status(500).json({ error: 'Failed to send bulk messages' });
     }
   });
 
-  app.get('/api/connections', (req: Request, res: Response) => {
+  app.get('/api/connections', (_req: Request, res: Response): void => {
     try {
       const connections = whatsappManager.getAllConnections();
       const connectionList = Array.from(connections.entries()).map(([userId, conn]) => ({
@@ -168,7 +166,7 @@ export function setupRoutes(
     }
   });
 
-  app.post('/api/check-number', async (req: AuthRequest, res: Response) => {
+  app.post('/api/check-number', async (req: AuthRequest, res: Response): Promise<Response> => {
     try {
       const { userId, phoneNumber } = req.body;
 
@@ -186,16 +184,17 @@ export function setupRoutes(
       }
 
       const jid = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
-      const [result] = await connection.socket.onWhatsApp(jid);
+      const results = await connection.socket.onWhatsApp(jid);
+      const result = results && results.length > 0 ? results[0] : undefined;
 
-      res.json({
+      return res.json({
         exists: result?.exists || false,
         jid: result?.jid,
         phoneNumber
       });
     } catch (error) {
       logger.error('Check number error:', error);
-      res.status(500).json({ error: 'Failed to check number' });
+      return res.status(500).json({ error: 'Failed to check number' });
     }
   });
 

@@ -36,7 +36,7 @@ async function startServer() {
 
     await whatsappManager.initialize();
 
-    setupRoutes(app, whatsappManager, supabaseService);
+    setupRoutes(app, whatsappManager);
 
     io.on('connection', (socket) => {
       logger.info(`Client connected: ${socket.id}`);

@@ -20,7 +20,15 @@ const supabase = createClient(
 );
 
 // Store connections in memory (will reset on each cold start)
-const connections = new Map<string, any>();
+const connections = new Map<string, WhatsAppConnection>();
+
+interface WhatsAppConnection {
+  socket: any;
+  isConnected: boolean;
+  qr: string | null;
+  userId: string;
+  phoneNumber?: string;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -90,6 +98,7 @@ async function handleConnect(userId: string, res: VercelResponse) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const { state, saveCreds } = await useMultiFileAuthState(tempDir);
     const { version } = await fetchLatestBaileysVersion();
 

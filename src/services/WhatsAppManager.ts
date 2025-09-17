@@ -1,15 +1,15 @@
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
-  makeInMemoryStore,
   WASocket,
   ConnectionState,
-  proto,
   WAMessage,
   AnyMessageContent,
-  delay,
   useMultiFileAuthState,
-  Browsers
+  Browsers,
+  proto,
+  delay,
+  CacheStore
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { Server } from 'socket.io';
@@ -22,7 +22,6 @@ import pino from 'pino';
 
 interface WhatsAppConnection {
   socket: WASocket;
-  store: ReturnType<typeof makeInMemoryStore>;
   qr?: string;
   isConnected: boolean;
   userId: string;
@@ -79,14 +78,12 @@ export class WhatsAppManager {
         }
       }
 
+      // eslint-disable-next-line react-hooks/rules-of-hooks
       const { state, saveCreds } = await useMultiFileAuthState(
         path.join(this.sessionsPath, userId)
       );
 
       const { version } = await fetchLatestBaileysVersion();
-      const store = makeInMemoryStore({
-        logger: pino().child({ level: 'silent', stream: 'store' })
-      });
 
       const socket = makeWASocket({
         version,
@@ -94,17 +91,14 @@ export class WhatsAppManager {
         printQRInTerminal: false,
         auth: state,
         browser: Browsers.ubuntu('Chrome'),
-        msgRetryCounterCache: {},
         generateHighQualityLinkPreview: true,
         syncFullHistory: false,
-        markOnlineOnConnect: true
+        markOnlineOnConnect: true,
+        msgRetryCounterCache: {} as CacheStore
       });
-
-      store.bind(socket.ev);
 
       const connection: WhatsAppConnection = {
         socket,
-        store,
         isConnected: false,
         userId
       };
@@ -120,7 +114,7 @@ export class WhatsAppManager {
   }
 
   private setupEventHandlers(userId: string, socket: WASocket, saveCreds: () => Promise<void>): void {
-    socket.ev.on('connection.update', async (update: ConnectionState) => {
+    socket.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
       const { connection, lastDisconnect, qr } = update;
       const conn = this.connections.get(userId);
 
@@ -188,7 +182,26 @@ export class WhatsAppManager {
     socket.ev.on('messages.update', async (messages) => {
       for (const msg of messages) {
         if (msg.update?.status) {
-          await this.supabase.updateMessageStatus(msg.key.id!, msg.update.status.toString());
+          const statusCode = msg.update.status;
+          let status: 'sent' | 'delivered' | 'read' | 'failed';
+
+          switch (statusCode) {
+            case 2:
+              status = 'sent';
+              break;
+            case 3:
+              status = 'delivered';
+              break;
+            case 4:
+              status = 'read';
+              break;
+            default:
+              status = 'failed';
+          }
+
+          if (msg.key.id) {
+            await this.supabase.updateMessageStatus(msg.key.id, status);
+          }
         }
       }
     });
@@ -201,7 +214,9 @@ export class WhatsAppManager {
       const messageContent = this.extractMessageContent(message);
       if (!messageContent) return;
 
-      const from = message.key.remoteJid!;
+      const from = message.key.remoteJid;
+      if (!from) return;
+
       const phoneNumber = from.split('@')[0];
       const pushName = message.pushName || phoneNumber;
 

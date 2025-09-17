@@ -1,6 +1,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '../utils/logger';
 
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  full_name?: string;
+  email?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface WhatsAppMessage {
   id?: string;
   clinic_id: string;
@@ -17,7 +26,7 @@ export interface WhatsAppMessage {
 export interface WhatsAppSession {
   id?: string;
   user_id: string;
-  session_data: any;
+  session_data: Record<string, unknown> | null;
   is_connected: boolean;
   phone_number?: string;
   last_activity?: string;
@@ -120,7 +129,7 @@ export class SupabaseService {
 
   async updateSessionStatus(userId: string, isConnected: boolean, phoneNumber?: string): Promise<void> {
     try {
-      const update: any = {
+      const update: Partial<WhatsAppSession> = {
         is_connected: isConnected,
         last_activity: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -181,7 +190,7 @@ export class SupabaseService {
     }
   }
 
-  async getUserProfile(userId: string): Promise<any> {
+  async getUserProfile(userId: string): Promise<UserProfile | null> {
     try {
       const { data, error } = await this.supabase
         .from('profiles')
