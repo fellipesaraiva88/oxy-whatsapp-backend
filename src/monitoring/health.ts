@@ -97,14 +97,14 @@ class HealthMonitor {
       // Verificar sessões ativas do WhatsApp
       const { data: sessions, error } = await this.supabase
         .from('whatsapp_sessions')
-        .select('id, status, last_seen')
-        .eq('status', 'connected');
+        .select('id, is_active, last_connected_at')
+        .eq('is_active', true);
 
       if (error) throw error;
 
       const activeSessions = sessions?.length || 0;
       const recentSessions = sessions?.filter(s =>
-        new Date(s.last_seen).getTime() > Date.now() - 5 * 60 * 1000
+        new Date(s.last_connected_at).getTime() > Date.now() - 5 * 60 * 1000
       ).length || 0;
 
       const duration = Date.now() - start;

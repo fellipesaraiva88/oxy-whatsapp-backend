@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import dotenv from 'dotenv';
@@ -7,6 +9,7 @@ import { logger } from './utils/logger';
 import { setupRoutes } from './routes';
 import { WhatsAppManager } from './services/WhatsAppManager';
 import { SupabaseService } from './services/SupabaseService';
+import { authMiddleware } from './auth/authMiddleware';
 
 dotenv.config();
 
@@ -19,11 +22,18 @@ const io = new Server(httpServer, {
   }
 });
 
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:8080'],
-  credentials: true
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: false // Disable CSP for API
 }));
-app.use(express.json());
+
+// CORS with authentication support
+app.use(authMiddleware.corsWithCredentials);
+
+// Body parsing middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
 
 const PORT = process.env.PORT || 3001;
 

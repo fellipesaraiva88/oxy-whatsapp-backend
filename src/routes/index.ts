@@ -1,16 +1,14 @@
 import { Express, Request, Response } from 'express';
 import { WhatsAppManager } from '../services/WhatsAppManager';
 import { logger } from '../utils/logger';
-
-interface AuthRequest extends Request {
-  userId?: string;
-}
+import { authMiddleware, AuthenticatedRequest } from '../auth/authMiddleware';
 
 export function setupRoutes(
   app: Express,
   whatsappManager: WhatsAppManager
 ): void {
 
+  // Public endpoints
   app.get('/health', (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
@@ -19,61 +17,80 @@ export function setupRoutes(
     });
   });
 
-  app.post('/api/connect', async (req: AuthRequest, res: Response): Promise<Response> => {
-    try {
-      const { userId } = req.body;
+  // Authentication endpoints
+  app.post('/api/auth/refresh', authMiddleware.refreshToken);
+  app.post('/api/auth/logout', authMiddleware.optionalAuth, authMiddleware.logout);
 
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
+  // Protected endpoints - all require authentication
+  app.post('/api/connect',
+    authMiddleware.authenticate,
+    async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+      try {
+        const userId = req.userId; // Get from authenticated session
+
+        if (!userId) {
+          return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        logger.info(`Connection request from user ${userId}`);
+        const result = await whatsappManager.connectUser(userId);
+
+        return res.json(result);
+      } catch (error) {
+        logger.error('Connection error:', error);
+        return res.status(500).json({ error: 'Failed to connect' });
       }
+    });
 
-      logger.info(`Connection request from user ${userId}`);
-      const result = await whatsappManager.connectUser(userId);
+  app.post('/api/disconnect',
+    authMiddleware.authenticate,
+    async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+      try {
+        const userId = req.userId;
 
-      return res.json(result);
-    } catch (error) {
-      logger.error('Connection error:', error);
-      return res.status(500).json({ error: 'Failed to connect' });
-    }
-  });
+        if (!userId) {
+          return res.status(401).json({ error: 'Authentication required' });
+        }
 
-  app.post('/api/disconnect', async (req: AuthRequest, res: Response): Promise<Response> => {
-    try {
-      const { userId } = req.body;
-
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
+        const result = await whatsappManager.disconnectUser(userId);
+        return res.json(result);
+      } catch (error) {
+        logger.error('Disconnection error:', error);
+        return res.status(500).json({ error: 'Failed to disconnect' });
       }
+    });
 
-      const result = await whatsappManager.disconnectUser(userId);
-      return res.json(result);
-    } catch (error) {
-      logger.error('Disconnection error:', error);
-      return res.status(500).json({ error: 'Failed to disconnect' });
-    }
-  });
+  app.get('/api/status',
+    authMiddleware.authenticate,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      try {
+        const userId = req.userId;
 
-  app.get('/api/status/:userId', async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { userId } = req.params;
-      const status = whatsappManager.getConnectionStatus(userId);
+        if (!userId) {
+          res.status(401).json({ error: 'Authentication required' });
+          return;
+        }
 
-      res.json(status);
-    } catch (error) {
-      logger.error('Status check error:', error);
-      res.status(500).json({ error: 'Failed to get status' });
-    }
-  });
-
-  app.post('/api/send-message', async (req: AuthRequest, res: Response): Promise<Response> => {
-    try {
-      const { userId, to, message, type = 'text' } = req.body;
-
-      if (!userId || !to || !message) {
-        return res.status(400).json({
-          error: 'Missing required fields: userId, to, message'
-        });
+        const status = whatsappManager.getConnectionStatus(userId);
+        res.json(status);
+      } catch (error) {
+        logger.error('Status check error:', error);
+        res.status(500).json({ error: 'Failed to get status' });
       }
+    });
+
+  app.post('/api/send-message',
+    authMiddleware.authenticate,
+    async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+      try {
+        const userId = req.userId;
+        const { to, message, type = 'text' } = req.body;
+
+        if (!userId || !to || !message) {
+          return res.status(400).json({
+            error: 'Missing required fields: to, message'
+          });
+        }
 
       let content: any;
 
@@ -106,15 +123,18 @@ export function setupRoutes(
     }
   });
 
-  app.post('/api/send-bulk', async (req: AuthRequest, res: Response): Promise<Response> => {
-    try {
-      const { userId, recipients, message, delay: delayMs = 1000 } = req.body;
+  app.post('/api/send-bulk',
+    authMiddleware.authenticate,
+    async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+      try {
+        const userId = req.userId;
+        const { recipients, message, delay: delayMs = 1000 } = req.body;
 
-      if (!userId || !recipients || !Array.isArray(recipients) || !message) {
-        return res.status(400).json({
-          error: 'Missing required fields: userId, recipients (array), message'
-        });
-      }
+        if (!userId || !recipients || !Array.isArray(recipients) || !message) {
+          return res.status(400).json({
+            error: 'Missing required fields: recipients (array), message'
+          });
+        }
 
       const results = [];
 
@@ -147,34 +167,39 @@ export function setupRoutes(
     }
   });
 
-  app.get('/api/connections', (_req: Request, res: Response): void => {
-    try {
-      const connections = whatsappManager.getAllConnections();
-      const connectionList = Array.from(connections.entries()).map(([userId, conn]) => ({
-        userId,
-        connected: conn.isConnected,
-        phoneNumber: conn.phoneNumber
-      }));
+  app.get('/api/connections',
+    authMiddleware.requireAdmin,  // Admin only endpoint
+    (_req: AuthenticatedRequest, res: Response): void => {
+      try {
+        const connections = whatsappManager.getAllConnections();
+        const connectionList = Array.from(connections.entries()).map(([userId, conn]) => ({
+          userId,
+          connected: conn.isConnected,
+          phoneNumber: conn.phoneNumber
+        }));
 
-      res.json({
-        total: connectionList.length,
-        connections: connectionList
-      });
-    } catch (error) {
-      logger.error('Get connections error:', error);
-      res.status(500).json({ error: 'Failed to get connections' });
-    }
-  });
-
-  app.post('/api/check-number', async (req: AuthRequest, res: Response): Promise<Response> => {
-    try {
-      const { userId, phoneNumber } = req.body;
-
-      if (!userId || !phoneNumber) {
-        return res.status(400).json({
-          error: 'Missing required fields: userId, phoneNumber'
+        res.json({
+          total: connectionList.length,
+          connections: connectionList
         });
+      } catch (error) {
+        logger.error('Get connections error:', error);
+        res.status(500).json({ error: 'Failed to get connections' });
       }
+    });
+
+  app.post('/api/check-number',
+    authMiddleware.authenticate,
+    async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+      try {
+        const userId = req.userId;
+        const { phoneNumber } = req.body;
+
+        if (!userId || !phoneNumber) {
+          return res.status(400).json({
+            error: 'Missing required fields: phoneNumber'
+          });
+        }
 
       const connections = whatsappManager.getAllConnections();
       const connection = connections.get(userId);
