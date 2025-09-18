@@ -1,17 +1,18 @@
+import dotenv from 'dotenv';
+// Load environment variables first
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
 import { createServer } from 'http';
-import dotenv from 'dotenv';
 import { logger } from './utils/logger';
 import { setupRoutes } from './routes';
 import { WhatsAppManager } from './services/WhatsAppManager';
 import { SupabaseService } from './services/SupabaseService';
 import { authMiddleware } from './auth/authMiddleware';
-
-dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);

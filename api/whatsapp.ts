@@ -30,19 +30,14 @@ interface WhatsAppConnection {
   phoneNumber?: string;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+import { corsMiddleware, setSecurityHeaders } from '../../api/cors-config';
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+async function whatsappBackendHandler(req: VercelRequest, res: VercelResponse) {
+  // Set security headers
+  setSecurityHeaders(res);
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const { action, userId, phoneNumber, message } = req.body || {};
@@ -338,3 +333,6 @@ async function handleGetStatus(userId: string, res: VercelResponse) {
     return res.status(500).json({ error: 'Failed to get status' });
   }
 }
+
+// Export with CORS middleware wrapper
+export default corsMiddleware(whatsappBackendHandler);
